@@ -6,6 +6,12 @@ module SolidQueue
 
         PROCESS_TAG = 'process_tag:solid_queue'.freeze
 
+        TERMINATION_ERRORS = [
+          SolidQueue::Processes::ProcessExitError,
+          SolidQueue::Processes::ProcessPrunedError,
+          SolidQueue::Processes::ProcessMissingError
+        ].freeze
+
         def initialize(statsd:, supervisor:, tags: [])
           @statsd = statsd
           @supervisor = supervisor
@@ -15,7 +21,9 @@ module SolidQueue
         def report
           wrap_in_app_executor do
             report_worker_utilization
-            report_queue_latency
+            report_queues
+            report_scheduled_size
+            report_failed_executions
           end
 
           statsd.flush(sync: true)
@@ -31,10 +39,34 @@ module SolidQueue
           end
         end
 
-        def report_queue_latency
-          SolidQueue::ReadyExecution.group(:queue_name).minimum(:created_at).each do |queue_name, enqueued_at|
-            record_current_value('solid_queue.queue.latency', seconds_since(enqueued_at), ["queue_name:#{queue_name}"])
+        def report_queues
+          oldest = SolidQueue::ReadyExecution.group(:queue_name).minimum(:created_at)
+
+          SolidQueue::ReadyExecution.group(:queue_name).count.each do |queue_name, size|
+            tags = ["queue_name:#{queue_name}"]
+
+            record_current_value('solid_queue.queue.size', size, tags)
+            record_current_value('solid_queue.queue.latency', seconds_since(oldest[queue_name]), tags)
           end
+        end
+
+        def report_scheduled_size
+          record_current_value('solid_queue.scheduled.size', SolidQueue::ScheduledExecution.count)
+        end
+
+        def report_failed_executions
+          terminated = terminated_failures_count
+          other = SolidQueue::FailedExecution.count - terminated
+
+          record_current_value('solid_queue.failed.size', terminated, ['cause:process_termination'])
+          record_current_value('solid_queue.failed.size', other, ['cause:other'])
+        end
+
+        def terminated_failures_count
+          conditions = TERMINATION_ERRORS.map { 'error LIKE ?' }.join(' OR ')
+          patterns = TERMINATION_ERRORS.map { |error| "%#{error.name}%" }
+
+          SolidQueue::FailedExecution.where(conditions, *patterns).count
         end
 
         def record_current_value(metric, value, tags = [])

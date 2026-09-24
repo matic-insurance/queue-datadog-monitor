@@ -33,6 +33,10 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     SolidQueue::ReadyExecution.claim('*', count, process.id)
   end
 
+  def fail_job(exception)
+    SolidQueue::FailedExecution.create!(job: enqueue_job, exception: exception)
+  end
+
   def report(tags: [])
     described_class.new(statsd: statsd, supervisor: supervisor, tags: tags).report
   end
@@ -70,6 +74,41 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     report
 
     expect(statsd).not_to have_received(:gauge).with('solid_queue.queue.latency', anything, anything)
+  end
+
+  it 'reports how many jobs are waiting on each queue' do
+    2.times { enqueue_job(queue_name: 'sourcing') }
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 2, { tags: ['queue_name:sourcing'] })
+  end
+
+  it 'reports how many jobs are scheduled for later' do
+    SolidQueue::Job.create!(class_name: 'SomeJob', queue_name: 'default', scheduled_at: 1.hour.from_now)
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.scheduled.size', 1, { tags: [] })
+  end
+
+  it 'counts the jobs their process was killed underneath separately from other failures' do
+    fail_job(SolidQueue::Processes::ProcessPrunedError.new(2.minutes.ago))
+    fail_job(StandardError.new('something else'))
+
+    report
+
+    expect(statsd).to have_received(:gauge)
+      .with('solid_queue.failed.size', 1, { tags: ['cause:process_termination'] })
+  end
+
+  it 'counts the remaining failures under the other cause' do
+    fail_job(SolidQueue::Processes::ProcessPrunedError.new(2.minutes.ago))
+    fail_job(StandardError.new('something else'))
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.failed.size', 1, { tags: ['cause:other'] })
   end
 
   it 'appends the configured common tags to every metric' do

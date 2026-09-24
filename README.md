@@ -53,18 +53,26 @@ duplicates the tag rather than setting it. Use `tags` for dimensions nothing els
 | --- | --- | --- |
 | `solid_queue.process.utilization` | `process_id`, `process_tag` | Share of a worker's threads holding a job, as a percentage |
 | `solid_queue.queue.latency` | `queue_name` | Seconds the oldest job waiting on that queue has waited |
+| `solid_queue.queue.size` | `queue_name` | Jobs waiting on that queue |
+| `solid_queue.scheduled.size` | — | Jobs scheduled for later, whether or not they are due |
+| `solid_queue.failed.size` | `cause` | Failed executions, split into `process_termination` and `other` |
 
 Read them together. Utilization answers "are the threads busy", latency answers "is anything waiting". Utilization
 saturates at 100 — Solid Queue caps claims at the number of idle threads, so ten queued jobs and a hundred
 thousand both read 100%.
 
-A queue with nothing waiting emits no point. Read latency as
-`max:solid_queue.queue.latency{...} by {queue_name}` and treat gaps as idle.
+A queue with nothing waiting emits no point for either `queue.latency` or `queue.size`. Read them as
+`max:...{...} by {queue_name}` and treat gaps as idle rather than filling them with zero — a zero would make a
+dead emitter look like a healthy idle queue.
+
+`failed.size` is reported as two series that sum to the total, so use `sum:` rather than `avg:` for an overall
+count. The `process_termination` half counts jobs whose worker was killed before they finished, which is the
+cost of terminating a pod while it holds work — worth watching if you autoscale.
 
 Throughput, duration and error rate per job class are not here — APM reports them as `trace.active_job.perform`.
 
-Planned: the age of a worker's longest-running job, dispatcher lag on already-due scheduled jobs, and failed
-executions split by whether the process was killed underneath them.
+Planned: the age of a worker's longest-running job, and dispatcher lag measured as the oldest scheduled job that
+is already due.
 
 ## How it works
 
