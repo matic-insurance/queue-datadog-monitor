@@ -6,6 +6,8 @@ module SolidQueue
 
         PROCESS_TAG = 'process_tag:solid_queue'.freeze
 
+        QUEUE_NAMES_TTL = 5.minutes
+
         def initialize(statsd:, supervisor:, tags: [])
           @statsd = statsd
           @supervisor = supervisor
@@ -15,7 +17,9 @@ module SolidQueue
         def report
           wrap_in_app_executor do
             report_worker_utilization
-            report_queue_latency
+            report_queues
+            report_scheduled_size
+            report_failed_size
           end
 
           statsd.flush(sync: true)
@@ -31,10 +35,31 @@ module SolidQueue
           end
         end
 
-        def report_queue_latency
-          SolidQueue::ReadyExecution.group(:queue_name).minimum(:created_at).each do |queue_name, enqueued_at|
-            record_current_value('solid_queue.queue.latency', seconds_since(enqueued_at), ["queue_name:#{queue_name}"])
+        def report_queues
+          sizes = SolidQueue::ReadyExecution.group(:queue_name).count
+          oldest = SolidQueue::ReadyExecution.group(:queue_name).minimum(:created_at)
+
+          known_queue_names.each do |queue_name|
+            tags = ["queue_name:#{queue_name}"]
+
+            record_current_value('solid_queue.queue.size', sizes.fetch(queue_name, 0), tags)
+            record_current_value('solid_queue.queue.latency', seconds_since(oldest[queue_name]), tags)
           end
+        end
+
+        def known_queue_names
+          return @known_queue_names if @known_queue_names_read_at && @known_queue_names_read_at > QUEUE_NAMES_TTL.ago
+
+          @known_queue_names_read_at = Time.current
+          @known_queue_names = SolidQueue::Job.distinct.pluck(:queue_name)
+        end
+
+        def report_scheduled_size
+          record_current_value('solid_queue.scheduled.size', SolidQueue::ScheduledExecution.count)
+        end
+
+        def report_failed_size
+          record_current_value('solid_queue.failed.size', SolidQueue::FailedExecution.count)
         end
 
         def record_current_value(metric, value, tags = [])

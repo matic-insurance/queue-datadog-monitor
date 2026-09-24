@@ -53,18 +53,26 @@ duplicates the tag rather than setting it. Use `tags` for dimensions nothing els
 | --- | --- | --- |
 | `solid_queue.process.utilization` | `process_id`, `process_tag` | Share of a worker's threads holding a job, as a percentage |
 | `solid_queue.queue.latency` | `queue_name` | Seconds the oldest job waiting on that queue has waited |
+| `solid_queue.queue.size` | `queue_name` | Jobs waiting on that queue |
+| `solid_queue.scheduled.size` | — | Jobs scheduled for later, whether or not they are due |
+| `solid_queue.failed.size` | — | Failed executions awaiting a retry or a discard |
 
 Read them together. Utilization answers "are the threads busy", latency answers "is anything waiting". Utilization
 saturates at 100 — Solid Queue caps claims at the number of idle threads, so ten queued jobs and a hundred
 thousand both read 100%.
 
-A queue with nothing waiting emits no point. Read latency as
-`max:solid_queue.queue.latency{...} by {queue_name}` and treat gaps as idle.
+`queue.size` and `queue.latency` are reported for every queue Solid Queue still knows about, which is every
+queue name present in the jobs table. An idle queue reports **0** rather than dropping out, so a monitor on it
+stays OK instead of flipping to No Data. Queues disappear only once their jobs age out of
+`clear_finished_jobs_after`.
+
+That queue list is a `DISTINCT` over the jobs table, so it is cached for five minutes rather than re-read every
+cycle. A queue created after a pod starts appears within that window.
 
 Throughput, duration and error rate per job class are not here — APM reports them as `trace.active_job.perform`.
 
-Planned: the age of a worker's longest-running job, dispatcher lag on already-due scheduled jobs, and failed
-executions split by whether the process was killed underneath them.
+Planned: the age of a worker's longest-running job, and dispatcher lag measured as the oldest scheduled job that
+is already due.
 
 ## How it works
 

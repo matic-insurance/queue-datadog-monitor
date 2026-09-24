@@ -20,6 +20,9 @@ Datadog metrics for background job queues, shared across Matic applications. It 
 | --- | --- |
 | `solid_queue.process.utilization` | `process_id`, `process_tag` |
 | `solid_queue.queue.latency` | `queue_name` |
+| `solid_queue.queue.size` | `queue_name` |
+| `solid_queue.scheduled.size` | — |
+| `solid_queue.failed.size` | — |
 
 Throughput and duration are out of scope — APM already reports them as `trace.active_job.perform`.
 
@@ -52,8 +55,13 @@ Each of these fails silently when broken — no exception, no log, just wrong or
 - **`fetch` the worker's thread count, never `to_f` on a possibly-nil value.** A nil ships `NaN` into a metric
   consumers autoscale on. Solid Queue 1.6 renamed the key from `thread_pool_size` to `pool_size`; both are read.
 - **The queue list is read per cycle**, never memoised, or a queue created after boot is never reported.
-- **`queue.latency` keeps its `queue_name` tag.** Consumers alert per queue; dropping the tag makes those
-  monitors go quiet rather than fail.
+- **`queue.latency` and `queue.size` keep their `queue_name` tag.** Consumers alert and chart per queue;
+  dropping the tag makes those go quiet rather than fail.
+- **Both are reported for every queue in the jobs table, not only those with work waiting.** An idle queue must
+  report 0; dropping out would flip a monitor to No Data.
+- **The queue list is cached for `QUEUE_NAMES_TTL`, neither memoised for the life of the process nor re-read
+  every cycle.** Memoising means a queue created after boot is never reported; re-reading means a
+  `DISTINCT` over the jobs table every 60 seconds in every pod, against a database that may be shared.
 - **Collection runs inside `wrap_in_app_executor`**, or the long-lived timer thread leaks its database connection
   and will not reconnect after a failover.
 - **Errors go to the configured `on_error`.** `Concurrent::TimerTask` swallows exceptions.

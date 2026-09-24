@@ -33,6 +33,10 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     SolidQueue::ReadyExecution.claim('*', count, process.id)
   end
 
+  def fail_job(exception)
+    SolidQueue::FailedExecution.create!(job: enqueue_job, exception: exception)
+  end
+
   def report(tags: [])
     described_class.new(statsd: statsd, supervisor: supervisor, tags: tags).report
   end
@@ -66,10 +70,40 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 90, { tags: ['queue_name:sourcing'] })
   end
 
-  it 'reports nothing for a queue with no jobs waiting' do
+  it 'reports zero rather than nothing for a queue whose jobs have all been picked up' do
     report
 
-    expect(statsd).not_to have_received(:gauge).with('solid_queue.queue.latency', anything, anything)
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 0, { tags: ['queue_name:default'] })
+  end
+
+  it 'keeps reporting a queue that has gone quiet, so consumers see zero rather than no data' do
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 0, { tags: ['queue_name:default'] })
+  end
+
+  it 'reports how many jobs are waiting on each queue' do
+    2.times { enqueue_job(queue_name: 'sourcing') }
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 2, { tags: ['queue_name:sourcing'] })
+  end
+
+  it 'reports how many jobs are scheduled for later' do
+    SolidQueue::Job.create!(class_name: 'SomeJob', queue_name: 'default', scheduled_at: 1.hour.from_now)
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.scheduled.size', 1, { tags: [] })
+  end
+
+  it 'reports how many executions have failed' do
+    2.times { fail_job(StandardError.new('boom')) }
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.failed.size', 2, { tags: [] })
   end
 
   it 'appends the configured common tags to every metric' do
@@ -78,7 +112,29 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     report(tags: ['env:production', 'product:my-app'])
 
     expect(statsd).to have_received(:gauge)
-      .with('solid_queue.queue.latency', 0, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
+      .with('solid_queue.queue.size', 1, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
+  end
+
+  it 'reads the queue list once across cycles rather than scanning the jobs table every time' do
+    metrics = described_class.new(statsd: statsd, supervisor: supervisor, tags: [])
+    metrics.report
+    enqueue_job(queue_name: 'appeared-later')
+
+    metrics.report
+
+    expect(statsd).not_to have_received(:gauge)
+      .with('solid_queue.queue.size', anything, { tags: ['queue_name:appeared-later'] })
+  end
+
+  it 'picks up a new queue once the cached list has expired' do
+    metrics = described_class.new(statsd: statsd, supervisor: supervisor, tags: [])
+    metrics.report
+    enqueue_job(queue_name: 'appeared-later')
+
+    travel_to(6.minutes.from_now) { metrics.report }
+
+    expect(statsd).to have_received(:gauge)
+      .with('solid_queue.queue.size', 1, { tags: ['queue_name:appeared-later'] })
   end
 
   it 'flushes the gauges, which a cycle this small leaves buffered otherwise' do
