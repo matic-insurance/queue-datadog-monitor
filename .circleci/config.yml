@@ -31,6 +31,36 @@ jobs:
           name: Run Rubocop
           command: bundle exec rubocop --parallel
 
+  release:
+    resource_class: small
+    parameters:
+      tag:
+        type: string
+    docker:
+      - image: cimg/ruby:3.4
+    environment:
+      RELEASE_TAG: << parameters.tag >>
+    steps:
+      - checkout
+      - run:
+          name: Set up credentials
+          command: |
+            mkdir -p $HOME/.gem
+            touch $HOME/.gem/credentials
+            chmod 0600 $HOME/.gem/credentials
+            echo -e "---\n:github: Bearer ${GITHUB_TOKEN}\n" > $HOME/.gem/credentials
+      - run:
+          name: Set version
+          command: |
+            sed -i "s/'0\.0\.0'/'${RELEASE_TAG}'/" lib/queue_datadog_monitor/version.rb
+            grep -qF "'${RELEASE_TAG}'" lib/queue_datadog_monitor/version.rb
+      - run:
+          name: Build gem
+          command: gem build *.gemspec
+      - run:
+          name: Push gem
+          command: gem push --KEY github --host https://rubygems.pkg.github.com/matic-insurance *.gem
+
 workflows:
 
   queue-datadog-monitor.build-pull-request:
@@ -61,3 +91,15 @@ workflows:
 
       - rubocop:
           name: rubocop
+
+  queue-datadog-monitor.release:
+    jobs:
+
+      - release:
+          context: gem-publishing
+          tag: << pipeline.git.tag >>
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^\d+\.\d+\.\d+$/
