@@ -126,6 +126,28 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
       .with('solid_queue.queue.size', 1, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
   end
 
+  it 'reads the queue list once across cycles rather than scanning the jobs table every time' do
+    metrics = described_class.new(statsd: statsd, supervisor: supervisor, tags: [])
+    metrics.report
+    enqueue_job(queue_name: 'appeared-later')
+
+    metrics.report
+
+    expect(statsd).not_to have_received(:gauge)
+      .with('solid_queue.queue.size', anything, { tags: ['queue_name:appeared-later'] })
+  end
+
+  it 'picks up a new queue once the cached list has expired' do
+    metrics = described_class.new(statsd: statsd, supervisor: supervisor, tags: [])
+    metrics.report
+    enqueue_job(queue_name: 'appeared-later')
+
+    travel_to(6.minutes.from_now) { metrics.report }
+
+    expect(statsd).to have_received(:gauge)
+      .with('solid_queue.queue.size', 1, { tags: ['queue_name:appeared-later'] })
+  end
+
   it 'flushes the gauges, which a cycle this small leaves buffered otherwise' do
     report
 

@@ -22,7 +22,11 @@ require 'solid_queue/datadog/monitor'
 ActiveRecord::Schema.verbose = false
 load "#{Gem.loaded_specs['solid_queue'].full_gem_path}/lib/generators/solid_queue/install/templates/db/queue_schema.rb"
 
+require 'active_support/testing/time_helpers'
+
 RSpec.configure do |config|
+  config.include ActiveSupport::Testing::TimeHelpers
+
   config.expect_with(:rspec) { |expectations| expectations.include_chain_clauses_in_custom_matcher_descriptions = true }
   config.mock_with(:rspec) { |mocks| mocks.verify_partial_doubles = true }
   config.shared_context_metadata_behavior = :apply_to_host_groups

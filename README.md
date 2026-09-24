@@ -66,6 +66,9 @@ queue name present in the jobs table. An idle queue reports **0** rather than dr
 stays OK instead of flipping to No Data. Queues disappear only once their jobs age out of
 `clear_finished_jobs_after`.
 
+That queue list is a `DISTINCT` over the jobs table, so it is cached for five minutes rather than re-read every
+cycle. A queue created after a pod starts appears within that window.
+
 `failed.size` is reported as two series that sum to the total, so use `sum:` rather than `avg:` for an overall
 count. The `process_termination` half counts jobs whose worker was killed before they finished, which is the
 cost of terminating a pod while it holds work — worth watching if you autoscale.

@@ -6,6 +6,8 @@ module SolidQueue
 
         PROCESS_TAG = 'process_tag:solid_queue'.freeze
 
+        QUEUE_NAMES_TTL = 5.minutes
+
         TERMINATION_ERRORS = [
           SolidQueue::Processes::ProcessExitError,
           SolidQueue::Processes::ProcessPrunedError,
@@ -52,7 +54,10 @@ module SolidQueue
         end
 
         def known_queue_names
-          SolidQueue::Job.distinct.pluck(:queue_name)
+          return @known_queue_names if @known_queue_names_read_at && @known_queue_names_read_at > QUEUE_NAMES_TTL.ago
+
+          @known_queue_names_read_at = Time.current
+          @known_queue_names = SolidQueue::Job.distinct.pluck(:queue_name)
         end
 
         def report_scheduled_size

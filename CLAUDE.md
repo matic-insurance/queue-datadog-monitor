@@ -58,8 +58,10 @@ Each of these fails silently when broken — no exception, no log, just wrong or
 - **`queue.latency` and `queue.size` keep their `queue_name` tag.** Consumers alert and chart per queue;
   dropping the tag makes those go quiet rather than fail.
 - **Both are reported for every queue in the jobs table, not only those with work waiting.** An idle queue must
-  report 0; dropping out would flip a monitor to No Data. The queue list is read per cycle, never memoised, or a
-  queue created after boot is never reported.
+  report 0; dropping out would flip a monitor to No Data.
+- **The queue list is cached for `QUEUE_NAMES_TTL`, neither memoised for the life of the process nor re-read
+  every cycle.** Memoising means a queue created after boot is never reported; re-reading means a
+  `DISTINCT` over the jobs table every 60 seconds in every pod, against a database that may be shared.
 - **`failed.size` is two series summing to the total.** Consumers reading a total need `sum:`, not `avg:`.
 - **The failure-cause filter stays portable SQL.** `LIKE ANY (ARRAY[...])` is Postgres-only and breaks the
   SQLite spec suite; an OR chain of `LIKE` works everywhere.
