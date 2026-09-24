@@ -40,14 +40,19 @@ module SolidQueue
         end
 
         def report_queues
+          sizes = SolidQueue::ReadyExecution.group(:queue_name).count
           oldest = SolidQueue::ReadyExecution.group(:queue_name).minimum(:created_at)
 
-          SolidQueue::ReadyExecution.group(:queue_name).count.each do |queue_name, size|
+          known_queue_names.each do |queue_name|
             tags = ["queue_name:#{queue_name}"]
 
-            record_current_value('solid_queue.queue.size', size, tags)
+            record_current_value('solid_queue.queue.size', sizes.fetch(queue_name, 0), tags)
             record_current_value('solid_queue.queue.latency', seconds_since(oldest[queue_name]), tags)
           end
+        end
+
+        def known_queue_names
+          SolidQueue::Job.distinct.pluck(:queue_name)
         end
 
         def report_scheduled_size

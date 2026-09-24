@@ -57,6 +57,9 @@ Each of these fails silently when broken — no exception, no log, just wrong or
 - **The queue list is read per cycle**, never memoised, or a queue created after boot is never reported.
 - **`queue.latency` and `queue.size` keep their `queue_name` tag.** Consumers alert and chart per queue;
   dropping the tag makes those go quiet rather than fail.
+- **Both are reported for every queue in the jobs table, not only those with work waiting.** An idle queue must
+  report 0; dropping out would flip a monitor to No Data. The queue list is read per cycle, never memoised, or a
+  queue created after boot is never reported.
 - **`failed.size` is two series summing to the total.** Consumers reading a total need `sum:`, not `avg:`.
 - **The failure-cause filter stays portable SQL.** `LIKE ANY (ARRAY[...])` is Postgres-only and breaks the
   SQLite spec suite; an OR chain of `LIKE` works everywhere.

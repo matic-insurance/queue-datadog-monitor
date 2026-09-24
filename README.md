@@ -61,9 +61,10 @@ Read them together. Utilization answers "are the threads busy", latency answers 
 saturates at 100 — Solid Queue caps claims at the number of idle threads, so ten queued jobs and a hundred
 thousand both read 100%.
 
-A queue with nothing waiting emits no point for either `queue.latency` or `queue.size`. Read them as
-`max:...{...} by {queue_name}` and treat gaps as idle rather than filling them with zero — a zero would make a
-dead emitter look like a healthy idle queue.
+`queue.size` and `queue.latency` are reported for every queue Solid Queue still knows about, which is every
+queue name present in the jobs table. An idle queue reports **0** rather than dropping out, so a monitor on it
+stays OK instead of flipping to No Data. Queues disappear only once their jobs age out of
+`clear_finished_jobs_after`.
 
 `failed.size` is reported as two series that sum to the total, so use `sum:` rather than `avg:` for an overall
 count. The `process_termination` half counts jobs whose worker was killed before they finished, which is the

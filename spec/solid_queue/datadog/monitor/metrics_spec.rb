@@ -70,10 +70,16 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 90, { tags: ['queue_name:sourcing'] })
   end
 
-  it 'reports nothing for a queue with no jobs waiting' do
+  it 'reports zero rather than nothing for a queue whose jobs have all been picked up' do
     report
 
-    expect(statsd).not_to have_received(:gauge).with('solid_queue.queue.latency', anything, anything)
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 0, { tags: ['queue_name:default'] })
+  end
+
+  it 'keeps reporting a queue that has gone quiet, so consumers see zero rather than no data' do
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 0, { tags: ['queue_name:default'] })
   end
 
   it 'reports how many jobs are waiting on each queue' do
@@ -117,7 +123,7 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     report(tags: ['env:production', 'product:my-app'])
 
     expect(statsd).to have_received(:gauge)
-      .with('solid_queue.queue.latency', 0, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
+      .with('solid_queue.queue.size', 1, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
   end
 
   it 'flushes the gauges, which a cycle this small leaves buffered otherwise' do
