@@ -1,0 +1,76 @@
+RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
+  let(:statsd) { instance_double(Datadog::Statsd, gauge: nil, flush: nil) }
+  let(:own_supervisor) { create_process(kind: 'Supervisor', name: 'supervisor-a', hostname: 'pod-a') }
+  let(:foreign_supervisor) { create_process(kind: 'Supervisor', name: 'supervisor-b', hostname: 'pod-b') }
+  let(:supervisor) { instance_double(SolidQueue::Supervisor, process_id: own_supervisor.id) }
+
+  let(:own_worker) do
+    create_process(kind: 'Worker', name: 'worker-a', hostname: 'pod-a',
+                   supervisor_id: own_supervisor.id, metadata: { thread_pool_size: 10 })
+  end
+
+  let(:foreign_worker) do
+    create_process(kind: 'Worker', name: 'worker-b', hostname: 'pod-b',
+                   supervisor_id: foreign_supervisor.id, metadata: { thread_pool_size: 10 })
+  end
+
+  def create_process(attributes)
+    SolidQueue::Process.create!({ pid: SecureRandom.random_number(10_000), last_heartbeat_at: Time.current }
+                                 .merge(attributes))
+  end
+
+  def enqueue_job(queue_name: 'default')
+    SolidQueue::Job.create!(class_name: 'SomeJob', queue_name: queue_name)
+  end
+
+  def claim_jobs(process, count)
+    count.times { enqueue_job }
+    SolidQueue::ReadyExecution.claim('*', count, process.id)
+  end
+
+  def report(tags: [])
+    described_class.new(statsd: statsd, supervisor: supervisor, tags: tags).report
+  end
+
+  before do
+    claim_jobs(own_worker, 3)
+    claim_jobs(foreign_worker, 3)
+  end
+
+  it 'reports thread utilization for the workers of its own supervisor only' do
+    report
+
+    expect(statsd).to have_received(:gauge)
+      .with('solid_queue.process.utilization', 30.0, { tags: array_including('process_tag:solid_queue') })
+      .once
+  end
+
+  it 'reports the age of the oldest waiting job for each queue separately' do
+    enqueue_job(queue_name: 'sourcing').ready_execution.update!(created_at: 90.seconds.ago)
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 90, { tags: ['queue_name:sourcing'] })
+  end
+
+  it 'reports nothing for a queue with no jobs waiting' do
+    report
+
+    expect(statsd).not_to have_received(:gauge).with('solid_queue.queue.latency', anything, anything)
+  end
+
+  it 'appends the configured common tags to every metric' do
+    enqueue_job(queue_name: 'sourcing')
+
+    report(tags: ['env:production', 'product:my-app'])
+
+    expect(statsd).to have_received(:gauge)
+      .with('solid_queue.queue.latency', 0, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
+  end
+
+  it 'flushes the gauges, which a cycle this small leaves buffered otherwise' do
+    report
+
+    expect(statsd).to have_received(:flush).with(sync: true)
+  end
+end
