@@ -40,12 +40,13 @@ workflows:
     jobs:
 
       - rspec-test:
+          name: rspec
           matrix:
             parameters:
               ruby-version: [ '3.4' ]
 
       - rubocop:
-          name: Rubocop
+          name: rubocop
 
   queue-datadog-monitor.build-main:
     when:
@@ -53,9 +54,10 @@ workflows:
     jobs:
 
       - rspec-test:
+          name: rspec
           matrix:
             parameters:
               ruby-version: [ '3.4' ]
 
       - rubocop:
-          name: Rubocop
+          name: rubocop
