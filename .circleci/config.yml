@@ -2,7 +2,6 @@
 version: 2.1
 
 orbs:
-  ci: matic/orb-common@0.2
   ruby: circleci/ruby@1.8.0
 
 jobs:
@@ -20,7 +19,6 @@ jobs:
       - run:
           name: Run RSpec Tests
           command: bundle exec rspec
-      - ci/slack-stage-message
 
   rubocop:
     resource_class: small
@@ -42,7 +40,6 @@ workflows:
     jobs:
 
       - rspec-test:
-          context: global
           matrix:
             parameters:
               ruby-version: [ '3.4' ]
@@ -56,7 +53,6 @@ workflows:
     jobs:
 
       - rspec-test:
-          context: global
           matrix:
             parameters:
               ruby-version: [ '3.4' ]
