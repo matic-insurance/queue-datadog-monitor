@@ -98,23 +98,12 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     expect(statsd).to have_received(:gauge).with('solid_queue.scheduled.size', 1, { tags: [] })
   end
 
-  it 'counts the jobs their process was killed underneath separately from other failures' do
-    fail_job(SolidQueue::Processes::ProcessPrunedError.new(2.minutes.ago))
-    fail_job(StandardError.new('something else'))
+  it 'reports how many executions have failed' do
+    2.times { fail_job(StandardError.new('boom')) }
 
     report
 
-    expect(statsd).to have_received(:gauge)
-      .with('solid_queue.failed.size', 1, { tags: ['cause:process_termination'] })
-  end
-
-  it 'counts the remaining failures under the other cause' do
-    fail_job(SolidQueue::Processes::ProcessPrunedError.new(2.minutes.ago))
-    fail_job(StandardError.new('something else'))
-
-    report
-
-    expect(statsd).to have_received(:gauge).with('solid_queue.failed.size', 1, { tags: ['cause:other'] })
+    expect(statsd).to have_received(:gauge).with('solid_queue.failed.size', 2, { tags: [] })
   end
 
   it 'appends the configured common tags to every metric' do

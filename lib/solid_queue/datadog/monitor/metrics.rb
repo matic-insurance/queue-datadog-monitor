@@ -8,12 +8,6 @@ module SolidQueue
 
         QUEUE_NAMES_TTL = 5.minutes
 
-        TERMINATION_ERRORS = [
-          SolidQueue::Processes::ProcessExitError,
-          SolidQueue::Processes::ProcessPrunedError,
-          SolidQueue::Processes::ProcessMissingError
-        ].freeze
-
         def initialize(statsd:, supervisor:, tags: [])
           @statsd = statsd
           @supervisor = supervisor
@@ -25,7 +19,7 @@ module SolidQueue
             report_worker_utilization
             report_queues
             report_scheduled_size
-            report_failed_executions
+            report_failed_size
           end
 
           statsd.flush(sync: true)
@@ -64,19 +58,8 @@ module SolidQueue
           record_current_value('solid_queue.scheduled.size', SolidQueue::ScheduledExecution.count)
         end
 
-        def report_failed_executions
-          terminated = terminated_failures_count
-          other = SolidQueue::FailedExecution.count - terminated
-
-          record_current_value('solid_queue.failed.size', terminated, ['cause:process_termination'])
-          record_current_value('solid_queue.failed.size', other, ['cause:other'])
-        end
-
-        def terminated_failures_count
-          conditions = TERMINATION_ERRORS.map { 'error LIKE ?' }.join(' OR ')
-          patterns = TERMINATION_ERRORS.map { |error| "%#{error.name}%" }
-
-          SolidQueue::FailedExecution.where(conditions, *patterns).count
+        def report_failed_size
+          record_current_value('solid_queue.failed.size', SolidQueue::FailedExecution.count)
         end
 
         def record_current_value(metric, value, tags = [])

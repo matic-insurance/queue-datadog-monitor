@@ -22,7 +22,7 @@ Datadog metrics for background job queues, shared across Matic applications. It 
 | `solid_queue.queue.latency` | `queue_name` |
 | `solid_queue.queue.size` | `queue_name` |
 | `solid_queue.scheduled.size` | — |
-| `solid_queue.failed.size` | `cause` |
+| `solid_queue.failed.size` | — |
 
 Throughput and duration are out of scope — APM already reports them as `trace.active_job.perform`.
 
@@ -62,9 +62,6 @@ Each of these fails silently when broken — no exception, no log, just wrong or
 - **The queue list is cached for `QUEUE_NAMES_TTL`, neither memoised for the life of the process nor re-read
   every cycle.** Memoising means a queue created after boot is never reported; re-reading means a
   `DISTINCT` over the jobs table every 60 seconds in every pod, against a database that may be shared.
-- **`failed.size` is two series summing to the total.** Consumers reading a total need `sum:`, not `avg:`.
-- **The failure-cause filter stays portable SQL.** `LIKE ANY (ARRAY[...])` is Postgres-only and breaks the
-  SQLite spec suite; an OR chain of `LIKE` works everywhere.
 - **Collection runs inside `wrap_in_app_executor`**, or the long-lived timer thread leaks its database connection
   and will not reconnect after a failover.
 - **Errors go to the configured `on_error`.** `Concurrent::TimerTask` swallows exceptions.

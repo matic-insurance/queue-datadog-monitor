@@ -8,4 +8,4 @@ Initial release.
 - `solid_queue.queue.latency` — seconds the oldest waiting job has waited, per queue
 - `solid_queue.queue.size` — jobs waiting, per queue
 - `solid_queue.scheduled.size` — jobs scheduled for later
-- `solid_queue.failed.size` — failed executions, split by `process_termination` and `other`
+- `solid_queue.failed.size` — failed executions

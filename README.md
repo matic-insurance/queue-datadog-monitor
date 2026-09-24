@@ -55,7 +55,7 @@ duplicates the tag rather than setting it. Use `tags` for dimensions nothing els
 | `solid_queue.queue.latency` | `queue_name` | Seconds the oldest job waiting on that queue has waited |
 | `solid_queue.queue.size` | `queue_name` | Jobs waiting on that queue |
 | `solid_queue.scheduled.size` | — | Jobs scheduled for later, whether or not they are due |
-| `solid_queue.failed.size` | `cause` | Failed executions, split into `process_termination` and `other` |
+| `solid_queue.failed.size` | — | Failed executions awaiting a retry or a discard |
 
 Read them together. Utilization answers "are the threads busy", latency answers "is anything waiting". Utilization
 saturates at 100 — Solid Queue caps claims at the number of idle threads, so ten queued jobs and a hundred
@@ -68,10 +68,6 @@ stays OK instead of flipping to No Data. Queues disappear only once their jobs a
 
 That queue list is a `DISTINCT` over the jobs table, so it is cached for five minutes rather than re-read every
 cycle. A queue created after a pod starts appears within that window.
-
-`failed.size` is reported as two series that sum to the total, so use `sum:` rather than `avg:` for an overall
-count. The `process_termination` half counts jobs whose worker was killed before they finished, which is the
-cost of terminating a pod while it holds work — worth watching if you autoscale.
 
 Throughput, duration and error rate per job class are not here — APM reports them as `trace.active_job.perform`.
 
