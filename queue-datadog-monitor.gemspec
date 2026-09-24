@@ -7,7 +7,7 @@ Gem::Specification.new do |spec|
   spec.email = ['andrii.k@matic.com']
 
   spec.summary = 'Datadog metrics for background job queues'
-  spec.description = 'Reports worker utilization, queue latency, dispatcher lag and failure causes to Datadog. ' \
+  spec.description = 'Reports worker utilization and queue latency to Datadog. ' \
                      'Solid Queue today; one entry point per queue backend.'
   spec.homepage = 'https://github.com/matic-insurance/queue-datadog-monitor'
   spec.license = 'MIT'

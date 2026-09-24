@@ -8,9 +8,14 @@ not named after any one queue library.
 
 ## Installation
 
+Published to Matic's GitHub Packages registry:
+
 ```ruby
-gem 'queue-datadog-monitor'
+gem 'queue-datadog-monitor', '~> 0.1', source: 'https://rubygems.pkg.github.com/matic-insurance'
 ```
+
+Give Bundler the credentials through its config, never in the Gemfile:
+`bundle config set rubygems.pkg.github.com <user>:<token>`, or `BUNDLE_RUBYGEMS__PKG__GITHUB__COM` in CI.
 
 Requiring the gem by its own name loads nothing but the version. Require the backend you use, in the initializer
 that configures it — an application on a different queue never loads Solid Queue support.
@@ -91,3 +96,8 @@ bundle exec rubocop
 ```
 
 Specs run against SQLite in memory, booting a minimal Rails application and loading Solid Queue's own schema.
+
+## Release
+
+Publish a GitHub release named after the version, e.g. `0.2.0` (no `v`). CircleCI sets the version from the tag,
+builds the gem and pushes it to GitHub Packages. `version.rb` stays `0.0.0` in git.

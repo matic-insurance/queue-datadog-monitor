@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    queue-datadog-monitor (0.1.0)
+    queue-datadog-monitor (0.0.0)
       concurrent-ruby (>= 1.1)
       dogstatsd-ruby (>= 5.0)
       solid_queue (>= 1.0)

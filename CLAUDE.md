@@ -31,7 +31,7 @@ reopened as a module, so the code lives under the queue backend's own namespace 
 ```
 lib/solid_queue/datadog/monitor.rb          SolidQueue::Datadog::Monitor  — config + lifecycle
 lib/solid_queue/datadog/monitor/metrics.rb  the collection and emission
-lib/queue_datadog_monitor/version.rb        VERSION only, for the gemspec
+lib/queue_datadog_monitor/version.rb        VERSION only, for the gemspec; 0.0.0 in git, set from the release tag
 ```
 
 A second backend gets `lib/sidekiq/...` beside it, with its own `configure!`. Keep backend code out of
