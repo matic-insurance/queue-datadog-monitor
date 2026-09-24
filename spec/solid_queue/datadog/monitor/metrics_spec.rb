@@ -6,17 +6,22 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
 
   let(:own_worker) do
     create_process(kind: 'Worker', name: 'worker-a', hostname: 'pod-a',
-                   supervisor_id: own_supervisor.id, metadata: { thread_pool_size: 10 })
+                   supervisor_id: own_supervisor.id, metadata: worker_metadata(threads: 10))
   end
 
   let(:foreign_worker) do
     create_process(kind: 'Worker', name: 'worker-b', hostname: 'pod-b',
-                   supervisor_id: foreign_supervisor.id, metadata: { thread_pool_size: 10 })
+                   supervisor_id: foreign_supervisor.id, metadata: worker_metadata(threads: 10))
   end
 
   def create_process(attributes)
     SolidQueue::Process.create!({ pid: SecureRandom.random_number(10_000), last_heartbeat_at: Time.current }
                                  .merge(attributes))
+  end
+
+  # What the installed Solid Queue actually registers, so a renamed key fails here
+  def worker_metadata(threads:)
+    SolidQueue::Worker.new(queues: '*', threads: threads).metadata
   end
 
   def enqueue_job(queue_name: 'default')
@@ -43,6 +48,14 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     expect(statsd).to have_received(:gauge)
       .with('solid_queue.process.utilization', 30.0, { tags: array_including('process_tag:solid_queue') })
       .once
+  end
+
+  it 'reads the thread count Solid Queue before 1.6 registered as thread_pool_size' do
+    own_worker.update!(metadata: { thread_pool_size: 10 })
+
+    report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.process.utilization', 30.0, anything)
   end
 
   it 'reports the age of the oldest waiting job for each queue separately' do

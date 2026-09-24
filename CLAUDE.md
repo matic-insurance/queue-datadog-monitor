@@ -49,8 +49,8 @@ Each of these fails silently when broken — no exception, no log, just wrong or
   that fills; a cycle this small takes many minutes to reach it.
 - **Workers are scoped by `supervisor_id`.** A process killed past its grace period keeps its row until
   `process_alive_threshold` prunes it. Reporting rows this supervisor does not own gauges dead workers.
-- **`metadata.fetch('thread_pool_size')`, never `to_f` on a possibly-nil value.** A nil ships `NaN` into a metric
-  consumers autoscale on.
+- **`fetch` the worker's thread count, never `to_f` on a possibly-nil value.** A nil ships `NaN` into a metric
+  consumers autoscale on. Solid Queue 1.6 renamed the key from `thread_pool_size` to `pool_size`; both are read.
 - **The queue list is read per cycle**, never memoised, or a queue created after boot is never reported.
 - **`queue.latency` keeps its `queue_name` tag.** Consumers alert per queue; dropping the tag makes those
   monitors go quiet rather than fail.

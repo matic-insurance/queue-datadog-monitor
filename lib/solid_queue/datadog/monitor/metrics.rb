@@ -48,7 +48,11 @@ module SolidQueue
         def utilization_of(worker)
           claimed = SolidQueue::ClaimedExecution.where(process_id: worker.id).count
 
-          ((claimed / worker.metadata.fetch('thread_pool_size').to_f) * 100).round(2)
+          ((claimed / pool_size_of(worker).to_f) * 100).round(2)
+        end
+
+        def pool_size_of(worker)
+          worker.metadata.fetch('pool_size') { worker.metadata.fetch('thread_pool_size') }
         end
 
         def tags_for(worker)
