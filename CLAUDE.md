@@ -59,8 +59,8 @@ Each of these fails silently when broken — no exception, no log, just wrong or
 - **Queue names come from the ready-executions grouping the cycle already runs, never from the jobs table.** The
   jobs table holds every finished job until `clear_finished_jobs_after`; a `DISTINCT` over it can outlast a
   statement timeout on a large table, in every supervisor, every heartbeat.
-- **A queue, once seen or configured through `queue_names`, is reported every cycle for the life of the
-  process.** An idle queue must report 0; dropping out would flip a monitor to No Data.
+- **A queue, once seen waiting, is reported every cycle for the life of the process.** An idle queue must
+  report 0; dropping out would flip a monitor to No Data.
 - **The known-names list is only ever grown by union, after the queries succeed.** It is never reset or nil, so
   a failed cycle leaves the next one able to report.
 - **Collection runs inside `wrap_in_app_executor`**, or the long-lived timer thread leaks its database connection

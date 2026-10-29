@@ -37,8 +37,8 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     SolidQueue::FailedExecution.create!(job: enqueue_job, exception: exception)
   end
 
-  def build_metrics(tags: [], queue_names: [])
-    described_class.new(statsd: statsd, supervisor: supervisor, tags: tags, queue_names: queue_names)
+  def build_metrics(tags: [])
+    described_class.new(statsd: statsd, supervisor: supervisor, tags: tags)
   end
 
   def report(tags: [])
@@ -101,12 +101,6 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     metrics.report
 
     expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 0, { tags: ['queue_name:mailers'] })
-  end
-
-  it 'reports a configured queue as zero before any job has waited on it' do
-    build_metrics(queue_names: ['reports']).report
-
-    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 0, { tags: ['queue_name:reports'] })
   end
 
   it 'finds queues without scanning the jobs table, which holds every finished job too' do

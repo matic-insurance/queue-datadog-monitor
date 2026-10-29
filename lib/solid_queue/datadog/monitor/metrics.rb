@@ -6,11 +6,11 @@ module SolidQueue
 
         PROCESS_TAG = 'process_tag:solid_queue'.freeze
 
-        def initialize(statsd:, supervisor:, tags: [], queue_names: [])
+        def initialize(statsd:, supervisor:, tags: [])
           @statsd = statsd
           @supervisor = supervisor
           @common_tags = tags
-          @known_queue_names = queue_names.map(&:to_s)
+          @known_queue_names = []
         end
 
         def report
