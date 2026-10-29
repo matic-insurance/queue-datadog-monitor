@@ -54,14 +54,15 @@ Each of these fails silently when broken — no exception, no log, just wrong or
   `process_alive_threshold` prunes it. Reporting rows this supervisor does not own gauges dead workers.
 - **`fetch` the worker's thread count, never `to_f` on a possibly-nil value.** A nil ships `NaN` into a metric
   consumers autoscale on. Solid Queue 1.6 renamed the key from `thread_pool_size` to `pool_size`; both are read.
-- **The queue list is read per cycle**, never memoised, or a queue created after boot is never reported.
 - **`queue.latency` and `queue.size` keep their `queue_name` tag.** Consumers alert and chart per queue;
   dropping the tag makes those go quiet rather than fail.
-- **Both are reported for every queue in the jobs table, not only those with work waiting.** An idle queue must
+- **Queue names come from the ready-executions grouping the cycle already runs, never from the jobs table.** The
+  jobs table holds every finished job until `clear_finished_jobs_after`; a `DISTINCT` over it can outlast a
+  statement timeout on a large table, in every supervisor, every heartbeat.
+- **A queue, once seen waiting, is reported every cycle for the life of the process.** An idle queue must
   report 0; dropping out would flip a monitor to No Data.
-- **The queue list is cached for `QUEUE_NAMES_TTL`, neither memoised for the life of the process nor re-read
-  every cycle.** Memoising means a queue created after boot is never reported; re-reading means a
-  `DISTINCT` over the jobs table every 60 seconds in every pod, against a database that may be shared.
+- **The known-names list is only ever grown by union, after the queries succeed.** It is never reset or nil, so
+  a failed cycle leaves the next one able to report.
 - **Collection runs inside `wrap_in_app_executor`**, or the long-lived timer thread leaks its database connection
   and will not reconnect after a failover.
 - **Errors go to the configured `on_error`.** `Concurrent::TimerTask` swallows exceptions.

@@ -61,13 +61,13 @@ Read them together. Utilization answers "are the threads busy", latency answers 
 saturates at 100 — Solid Queue caps claims at the number of idle threads, so ten queued jobs and a hundred
 thousand both read 100%.
 
-`queue.size` and `queue.latency` are reported for every queue Solid Queue still knows about, which is every
-queue name present in the jobs table. An idle queue reports **0** rather than dropping out, so a monitor on it
-stays OK instead of flipping to No Data. Queues disappear only once their jobs age out of
-`clear_finished_jobs_after`.
+`queue.size` and `queue.latency` are reported for every queue this process has seen a job waiting on since it
+started. A new queue appears on the first cycle a job waits on it. Once known, an idle queue reports **0** rather
+than dropping out, so a monitor on it stays OK instead of flipping to No Data, until the process restarts. A queue
+that has had nothing waiting since the process started is not reported until something does.
 
-That queue list is a `DISTINCT` over the jobs table, so it is cached for five minutes rather than re-read every
-cycle. A queue created after a pod starts appears within that window.
+Queue names are read from the waiting jobs only, never from the jobs table: that table holds every finished job
+until `clear_finished_jobs_after`, and a scan of it outlasts a statement timeout once it grows large.
 
 Throughput, duration and error rate per job class are not here — APM reports them as `trace.active_job.perform`.
 
