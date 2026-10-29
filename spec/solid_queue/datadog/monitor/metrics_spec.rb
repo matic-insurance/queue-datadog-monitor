@@ -37,8 +37,19 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
     SolidQueue::FailedExecution.create!(job: enqueue_job, exception: exception)
   end
 
+  def build_metrics(tags: [], queue_names: [])
+    described_class.new(statsd: statsd, supervisor: supervisor, tags: tags, queue_names: queue_names)
+  end
+
   def report(tags: [])
-    described_class.new(statsd: statsd, supervisor: supervisor, tags: tags).report
+    build_metrics(tags: tags).report
+  end
+
+  def sql_issued_by(&block)
+    statements = []
+    callback = ->(*, payload) { statements << payload[:sql] }
+    ActiveSupport::Notifications.subscribed(callback, 'sql.active_record', &block)
+    statements
   end
 
   before do
@@ -63,31 +74,67 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
   end
 
   it 'reports the age of the oldest waiting job for each queue separately' do
-    enqueue_job(queue_name: 'sourcing').ready_execution.update!(created_at: 90.seconds.ago)
+    enqueue_job(queue_name: 'mailers').ready_execution.update!(created_at: 90.seconds.ago)
 
     report
 
-    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 90, { tags: ['queue_name:sourcing'] })
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 90, { tags: ['queue_name:mailers'] })
   end
 
   it 'reports zero rather than nothing for a queue whose jobs have all been picked up' do
-    report
+    metrics = build_metrics
+    enqueue_job(queue_name: 'mailers')
+    metrics.report
+    SolidQueue::ReadyExecution.claim('mailers', 1, own_worker.id)
 
-    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 0, { tags: ['queue_name:default'] })
+    metrics.report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 0, { tags: ['queue_name:mailers'] })
   end
 
   it 'keeps reporting a queue that has gone quiet, so consumers see zero rather than no data' do
-    report
+    metrics = build_metrics
+    enqueue_job(queue_name: 'mailers').ready_execution.update!(created_at: 90.seconds.ago)
+    metrics.report
+    SolidQueue::ReadyExecution.claim('mailers', 1, own_worker.id)
 
-    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 0, { tags: ['queue_name:default'] })
+    metrics.report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.latency', 0, { tags: ['queue_name:mailers'] })
+  end
+
+  it 'reports a configured queue as zero before any job has waited on it' do
+    build_metrics(queue_names: ['reports']).report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 0, { tags: ['queue_name:reports'] })
+  end
+
+  it 'finds queues without scanning the jobs table, which holds every finished job too' do
+    enqueue_job(queue_name: 'mailers')
+
+    statements = sql_issued_by { report }
+
+    expect(statements.grep(/solid_queue_jobs/)).to be_empty
+  end
+
+  it 'reports queues again on the cycle after one whose query failed' do
+    metrics = build_metrics
+    enqueue_job(queue_name: 'mailers')
+    allow(SolidQueue::ReadyExecution).to receive(:group).and_raise(ActiveRecord::QueryCanceled)
+    expect { metrics.report }.to raise_error(ActiveRecord::QueryCanceled)
+    allow(SolidQueue::ReadyExecution).to receive(:group).and_call_original
+
+    metrics.report
+
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 1, { tags: ['queue_name:mailers'] })
   end
 
   it 'reports how many jobs are waiting on each queue' do
-    2.times { enqueue_job(queue_name: 'sourcing') }
+    2.times { enqueue_job(queue_name: 'mailers') }
 
     report
 
-    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 2, { tags: ['queue_name:sourcing'] })
+    expect(statsd).to have_received(:gauge).with('solid_queue.queue.size', 2, { tags: ['queue_name:mailers'] })
   end
 
   it 'reports how many jobs are scheduled for later' do
@@ -107,31 +154,20 @@ RSpec.describe SolidQueue::Datadog::Monitor::Metrics do
   end
 
   it 'appends the configured common tags to every metric' do
-    enqueue_job(queue_name: 'sourcing')
+    enqueue_job(queue_name: 'mailers')
 
     report(tags: ['env:production', 'product:my-app'])
 
     expect(statsd).to have_received(:gauge)
-      .with('solid_queue.queue.size', 1, { tags: ['queue_name:sourcing', 'env:production', 'product:my-app'] })
+      .with('solid_queue.queue.size', 1, { tags: ['queue_name:mailers', 'env:production', 'product:my-app'] })
   end
 
-  it 'reads the queue list once across cycles rather than scanning the jobs table every time' do
-    metrics = described_class.new(statsd: statsd, supervisor: supervisor, tags: [])
+  it 'picks up a new queue on the first cycle a job waits on it' do
+    metrics = build_metrics
     metrics.report
     enqueue_job(queue_name: 'appeared-later')
 
     metrics.report
-
-    expect(statsd).not_to have_received(:gauge)
-      .with('solid_queue.queue.size', anything, { tags: ['queue_name:appeared-later'] })
-  end
-
-  it 'picks up a new queue once the cached list has expired' do
-    metrics = described_class.new(statsd: statsd, supervisor: supervisor, tags: [])
-    metrics.report
-    enqueue_job(queue_name: 'appeared-later')
-
-    travel_to(6.minutes.from_now) { metrics.report }
 
     expect(statsd).to have_received(:gauge)
       .with('solid_queue.queue.size', 1, { tags: ['queue_name:appeared-later'] })

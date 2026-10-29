@@ -12,7 +12,7 @@ module SolidQueue
       DEFAULT_ERROR_HANDLER = ->(error) { warn("[queue-datadog-monitor] #{error.class}: #{error.message}") }
 
       class << self
-        attr_reader :agent_host, :agent_port, :tags, :error_handler, :statsd
+        attr_reader :agent_host, :agent_port, :tags, :queue_names, :error_handler, :statsd
 
         def configure!(options = {})
           raise Error, "Can't configure two times" if configured?
@@ -20,6 +20,7 @@ module SolidQueue
           @agent_host = options[:agent_host]
           @agent_port = options[:agent_port]
           @tags = options[:tags] || []
+          @queue_names = options[:queue_names] || []
           @error_handler = options[:on_error] || DEFAULT_ERROR_HANDLER
           @configured = true
 
@@ -32,7 +33,7 @@ module SolidQueue
 
         def start!(supervisor)
           @statsd = build_statsd
-          metrics = Metrics.new(statsd: @statsd, supervisor: supervisor, tags: tags)
+          metrics = Metrics.new(statsd: @statsd, supervisor: supervisor, tags: tags, queue_names: queue_names)
 
           @task = Concurrent::TimerTask.new(execution_interval: SolidQueue.process_heartbeat_interval) do
             metrics.report
@@ -68,6 +69,7 @@ module SolidQueue
           @agent_host = nil
           @agent_port = nil
           @tags = nil
+          @queue_names = nil
           @error_handler = nil
           @task = nil
           @statsd = nil

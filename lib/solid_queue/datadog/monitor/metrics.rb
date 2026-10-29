@@ -6,12 +6,11 @@ module SolidQueue
 
         PROCESS_TAG = 'process_tag:solid_queue'.freeze
 
-        QUEUE_NAMES_TTL = 5.minutes
-
-        def initialize(statsd:, supervisor:, tags: [])
+        def initialize(statsd:, supervisor:, tags: [], queue_names: [])
           @statsd = statsd
           @supervisor = supervisor
           @common_tags = tags
+          @known_queue_names = queue_names.map(&:to_s)
         end
 
         def report
@@ -27,7 +26,7 @@ module SolidQueue
 
         private
 
-        attr_reader :statsd, :supervisor, :common_tags
+        attr_reader :statsd, :supervisor, :common_tags, :known_queue_names
 
         def report_worker_utilization
           own_workers.find_each do |worker|
@@ -38,6 +37,7 @@ module SolidQueue
         def report_queues
           sizes = SolidQueue::ReadyExecution.group(:queue_name).count
           oldest = SolidQueue::ReadyExecution.group(:queue_name).minimum(:created_at)
+          @known_queue_names |= sizes.keys
 
           known_queue_names.each do |queue_name|
             tags = ["queue_name:#{queue_name}"]
@@ -45,13 +45,6 @@ module SolidQueue
             record_current_value('solid_queue.queue.size', sizes.fetch(queue_name, 0), tags)
             record_current_value('solid_queue.queue.latency', seconds_since(oldest[queue_name]), tags)
           end
-        end
-
-        def known_queue_names
-          return @known_queue_names if @known_queue_names_read_at && @known_queue_names_read_at > QUEUE_NAMES_TTL.ago
-
-          @known_queue_names_read_at = Time.current
-          @known_queue_names = SolidQueue::Job.distinct.pluck(:queue_name)
         end
 
         def report_scheduled_size

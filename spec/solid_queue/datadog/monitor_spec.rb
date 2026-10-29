@@ -44,6 +44,15 @@ RSpec.describe SolidQueue::Datadog::Monitor do
     expect(Datadog::Statsd).to have_received(:new).with('agent.local', 8135, single_thread: true)
   end
 
+  it 'hands the configured queue names to the collector' do
+    allow(described_class::Metrics).to receive(:new).and_call_original
+
+    described_class.configure!(queue_names: %w[default mailers])
+    described_class.start!(supervisor)
+
+    expect(described_class::Metrics).to have_received(:new).with(hash_including(queue_names: %w[default mailers]))
+  end
+
   it 'routes a collection failure to the configured handler' do
     handled = nil
     task = instance_double(Concurrent::TimerTask, execute: nil, shutdown: nil)
